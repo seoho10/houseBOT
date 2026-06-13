@@ -91,3 +91,39 @@ def format_daily_summary(
     lines.append(f"📊 {_link(sheets_url, '전체 추이 보기 → Google Sheets')}")
 
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ComplexChanges:
+    apartment: ApartmentConfig
+    new_listings: list[Listing]
+    price_changes: list[Event]
+
+
+def format_light_check(time: str, complex_changes: list[ComplexChanges]) -> str:
+    if not complex_changes or all(
+        not c.new_listings and not c.price_changes for c in complex_changes
+    ):
+        raise ValueError("format_light_check called with no changes — caller should skip send")
+
+    lines = [f"🔔 <b>변동 알림</b> ({time})", ""]
+    for c in complex_changes:
+        if not c.new_listings and not c.price_changes:
+            continue
+        complex_url = f"https://new.land.naver.com/complexes/{c.apartment.complex_id}"
+        lines.append(f"📍 {_link(complex_url, c.apartment.name)}")
+        if c.new_listings:
+            lines.append(f"🆕 신규 매물 {len(c.new_listings)}건")
+            for l in c.new_listings:
+                lines.append(f" • {_format_listing_line(l)}")
+        if c.price_changes:
+            lines.append(f"📉 가격 변동 {len(c.price_changes)}건")
+            for e in c.price_changes:
+                lines.append(f" • {_link(e.article_url, e.detail)}")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def format_error(message: str) -> str:
+    safe = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+    return f"🚨 <b>houseBOT 에러</b>\n\n{safe}"
