@@ -30,11 +30,20 @@ def _require_env(key: str) -> str:
     return val
 
 
+def _parse_sa_json(raw: str) -> dict:
+    """Extract just the first JSON object, ignoring any trailing garbage
+    (e.g., a stray DRY_RUN=false line copied into the secret)."""
+    obj, _ = json.JSONDecoder().raw_decode(raw.strip())
+    if not isinstance(obj, dict):
+        raise RuntimeError("GOOGLE_SERVICE_ACCOUNT_JSON did not decode to an object")
+    return obj
+
+
 def load_settings() -> Settings:
     return Settings(
-        telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
-        telegram_chat_id=_require_env("TELEGRAM_CHAT_ID"),
-        sheets_id=_require_env("GOOGLE_SHEETS_ID"),
-        google_sa_info=json.loads(_require_env("GOOGLE_SERVICE_ACCOUNT_JSON").strip()),
+        telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN").strip(),
+        telegram_chat_id=_require_env("TELEGRAM_CHAT_ID").strip(),
+        sheets_id=_require_env("GOOGLE_SHEETS_ID").strip(),
+        google_sa_info=_parse_sa_json(_require_env("GOOGLE_SERVICE_ACCOUNT_JSON")),
         dry_run=os.environ.get("DRY_RUN", "false").strip().lower() == "true",
     )
