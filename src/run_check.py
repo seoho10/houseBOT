@@ -14,12 +14,30 @@ from src.telegram_notifier import (
 
 KST = timezone(timedelta(hours=9))
 PRICE_CHANGE_THRESHOLD_PCT = 3.0
+DEDUP_WINDOW_MINUTES = 30  # skip if another host already ran check within 30 min
+
+
+def _was_recently_run(store: SheetsStore, mode: str, max_minutes: int) -> bool:
+    when_str = store.last_successful_run_for_mode(mode)
+    if not isinstance(when_str, str) or not when_str:
+        return False
+    try:
+        last = datetime.strptime(when_str, "%Y-%m-%d %H:%M").replace(tzinfo=KST)
+    except (ValueError, TypeError):
+        return False
+    diff_min = (datetime.now(KST) - last).total_seconds() / 60
+    return 0 <= diff_min < max_minutes
 
 
 def main() -> None:
     settings = load_settings()
     store = SheetsStore(settings.sheets_id, settings.google_sa_info)
     store.ensure_tabs()
+
+    if _was_recently_run(store, "check", DEDUP_WINDOW_MINUTES):
+        print("Check already ran within last 30 min on another host - skipping.")
+        return
+
     apartments = store.load_apartments()
     if not apartments:
         return

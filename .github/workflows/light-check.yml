@@ -1,10 +1,9 @@
 name: Light Check
 
 on:
-  schedule:
-    # 09:00, 11:00, 13:00, 15:00, 17:00, 19:00, 21:00 KST
-    # → 00:00, 02:00, 04:00, 06:00, 08:00, 10:00, 12:00 UTC
-    - cron: "0 0,2,4,6,8,10,12 * * *"
+  # Cron disabled — Naver blocks GitHub Actions IPs. Local PC handles scheduling now.
+  # schedule:
+  #   - cron: "0 0,2,4,6,8,10,12 * * *"
   workflow_dispatch:
 
 concurrency:
