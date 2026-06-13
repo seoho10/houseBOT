@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 
-from src.analyzer import confirmed_on, detect_changes, summarize_by_size, top_n_lowest
+from src.analyzer import confirmed_on, detect_changes, lowest_by_size, summarize_by_size
 from src.config import load_settings
 from src.naver_scraper import fetch_listings
 from src.sheets_store import SheetsStore
@@ -14,7 +14,6 @@ from src.telegram_notifier import (
 
 KST = timezone(timedelta(hours=9))
 PRICE_CHANGE_THRESHOLD_PCT = 3.0
-TOP_N = 3
 DEDUP_WINDOW_MINUTES = 360  # skip if another host already ran daily within 6h
 
 
@@ -85,7 +84,7 @@ def main() -> None:
             size_summaries=summaries,
             new_listings=new_listings,
             price_changes=price_events,
-            top_lowest=top_n_lowest(today_listings, TOP_N),
+            lowest_by_size=lowest_by_size(today_listings),
         ))
 
     if all_today:

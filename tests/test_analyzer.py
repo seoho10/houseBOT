@@ -73,7 +73,7 @@ def test_multiple_changes_in_one_call():
     assert kinds == ["LISTING_REMOVED", "NEW_LISTING", "PRICE_CHANGE"]
 
 
-from src.analyzer import summarize_by_size, top_n_lowest
+from src.analyzer import lowest_by_size, summarize_by_size
 
 
 def test_summarize_by_size_groups_correctly():
@@ -103,18 +103,25 @@ def test_summarize_empty():
     assert summarize_by_size([]) == {}
 
 
-def test_top_n_lowest_returns_cheapest():
+def test_lowest_by_size_picks_cheapest_per_size_ordered():
     listings = [
-        L(article_id="a1", price=130000),
-        L(article_id="a2", price=125000),
-        L(article_id="a3", price=128000),
-        L(article_id="a4", price=132000),
+        L(article_id="a1", price=130000, size="84"),
+        L(article_id="a2", price=125000, size="84"),   # cheapest 84
+        L(article_id="a3", price=200000, size="114"),
+        L(article_id="a4", price=185000, size="114"),   # cheapest 114
+        L(article_id="a5", price=98000, size="59"),
     ]
-    top3 = top_n_lowest(listings, n=3)
-    prices = [l.price_manwon for l in top3]
-    assert prices == [125000, 128000, 130000]
+    out = lowest_by_size(listings)
+    assert [(l.size_label, l.price_manwon) for l in out] == [
+        ("59", 98000), ("84", 125000), ("114", 185000),
+    ]
 
 
-def test_top_n_lowest_fewer_than_n():
-    listings = [L(article_id="a1", price=130000)]
-    assert len(top_n_lowest(listings, n=3)) == 1
+def test_lowest_by_size_empty():
+    assert lowest_by_size([]) == []
+
+
+def test_lowest_by_size_non_numeric_size_sorts_last():
+    listings = [L(article_id="a1", price=100000, size="?"), L(article_id="a2", price=120000, size="84")]
+    out = lowest_by_size(listings)
+    assert [l.size_label for l in out] == ["84", "?"]

@@ -16,7 +16,7 @@ class ComplexReport:
     size_summaries: dict[str, SizeSummary]
     new_listings: list[Listing]
     price_changes: list[Event]
-    top_lowest: list[Listing]
+    lowest_by_size: list[Listing]
 
 
 def _format_price(manwon: int) -> str:
@@ -81,10 +81,10 @@ def format_daily_summary(
             for e in r.price_changes:
                 lines.append(f" • {_link(e.article_url, e.detail)}")
             lines.append("")
-        if r.top_lowest:
-            lines.append("🏷 최저가 TOP")
-            for i, l in enumerate(r.top_lowest, 1):
-                lines.append(f" {i}. {_format_listing_line(l)}")
+        if r.lowest_by_size:
+            lines.append("🏷 평형별 최저가")
+            for l in r.lowest_by_size:
+                lines.append(f" • {_format_listing_line(l)}")
             lines.append("")
 
     lines.append("━━━━━━━━━━━━━━━━━━")

@@ -93,6 +93,20 @@ def summarize_by_size(listings: list[Listing]) -> dict[str, SizeSummary]:
     return result
 
 
-def top_n_lowest(listings: list[Listing], n: int) -> list[Listing]:
-    """Return n listings with lowest prices."""
-    return sorted(listings, key=lambda l: l.price_manwon)[:n]
+def _size_sort_key(size_label: str) -> tuple[int, str]:
+    """Sort size labels numerically ('59' < '84' < '108'); non-numeric last."""
+    return (int(size_label), "") if size_label.isdigit() else (10**9, size_label)
+
+
+def lowest_by_size(listings: list[Listing]) -> list[Listing]:
+    """Cheapest listing within each size, ordered by size (㎡ ascending).
+
+    Replaces a global "TOP-N cheapest", which collapsed onto the smallest size
+    and hid the best price in every other size bucket.
+    """
+    cheapest: dict[str, Listing] = {}
+    for l in listings:
+        cur = cheapest.get(l.size_label)
+        if cur is None or l.price_manwon < cur.price_manwon:
+            cheapest[l.size_label] = l
+    return [cheapest[k] for k in sorted(cheapest, key=_size_sort_key)]

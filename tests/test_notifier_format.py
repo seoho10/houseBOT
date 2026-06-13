@@ -22,7 +22,7 @@ def test_format_daily_summary_includes_complex_name_with_link():
         size_summaries={"84": SizeSummary("84", 2, 125000, 127500, 130000)},
         new_listings=[],
         price_changes=[],
-        top_lowest=[_listing("a1")],
+        lowest_by_size=[_listing("a1")],
     )
 
     text = format_daily_summary(
@@ -52,7 +52,7 @@ def test_format_daily_summary_renders_new_and_price_changes():
         size_summaries={"84": SizeSummary("84", 2, 125000, 136500, 148000)},
         new_listings=[new_l],
         price_changes=[price_change_event],
-        top_lowest=[_listing("a1")],
+        lowest_by_size=[_listing("a1")],
     )
     text = format_daily_summary("2026-06-14", [report], "https://x")
 
