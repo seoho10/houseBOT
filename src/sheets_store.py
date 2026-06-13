@@ -54,6 +54,42 @@ class SheetsStore:
             if tab == "settings":
                 ws.update("A2", _DEFAULT_SETTINGS_ROWS)
 
+    def save_latest(self, listings: list["Listing"], scraped_at: str) -> None:
+        ws = self._book.worksheet("latest")
+        ws.clear()
+        header = _HEADERS["latest"]
+        rows = [header]
+        for l in listings:
+            rows.append([
+                l.complex_id, l.article_id, l.size_label, str(l.price_manwon),
+                l.building, l.floor, l.direction, l.registered_ymd,
+                l.article_url, scraped_at,
+            ])
+        ws.update("A1", rows)
+
+    def load_latest(self) -> list["Listing"]:
+        from src.models import Listing
+        ws = self._book.worksheet("latest")
+        rows = ws.get_all_values()
+        if len(rows) <= 1:
+            return []
+        result = []
+        for row in rows[1:]:
+            row = (row + [""] * 10)[:10]
+            complex_id, article_id, size, price_str, building, floor, direction, ymd, url, _scraped = row
+            if not article_id.strip():
+                continue
+            try:
+                price = int(price_str)
+            except ValueError:
+                continue
+            result.append(Listing(
+                article_id=article_id, complex_id=complex_id, size_label=size,
+                size_sqm=0.0, price_manwon=price, building=building, floor=floor,
+                direction=direction, registered_ymd=ymd, article_url=url,
+            ))
+        return result
+
     def load_apartments(self) -> list["ApartmentConfig"]:
         from src.config import ApartmentConfig  # local import to avoid circularity
         ws = self._book.worksheet("settings")
