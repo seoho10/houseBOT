@@ -53,3 +53,27 @@ class SheetsStore:
             ws.update("A1", [_HEADERS[tab]])
             if tab == "settings":
                 ws.update("A2", _DEFAULT_SETTINGS_ROWS)
+
+    def load_apartments(self) -> list["ApartmentConfig"]:
+        from src.config import ApartmentConfig  # local import to avoid circularity
+        ws = self._book.worksheet("settings")
+        rows = ws.get_all_values()
+        if len(rows) <= 1:
+            return []
+        result = []
+        for row in rows[1:]:
+            row = (row + ["", "", "", ""])[:4]
+            name, complex_id, sizes_raw, active_raw = row
+            if not complex_id.strip():
+                continue
+            active = active_raw.strip().upper() == "TRUE"
+            if not active:
+                continue
+            sizes = tuple(s.strip() for s in sizes_raw.split(",") if s.strip())
+            result.append(ApartmentConfig(
+                name=name.strip(),
+                complex_id=complex_id.strip(),
+                interested_sizes=sizes,
+                active=True,
+            ))
+        return result
