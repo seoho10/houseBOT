@@ -1,6 +1,10 @@
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 from src.models import Listing
 from src.config import ApartmentConfig, Settings
+
+KST = timezone(timedelta(hours=9))
+TODAY = datetime.now(KST).strftime("%Y-%m-%d")
 
 
 def _settings(dry=False):
@@ -11,11 +15,11 @@ def _settings(dry=False):
     )
 
 
-def _make_listing(article_id, complex_id, price):
+def _make_listing(article_id, complex_id, price, ymd="2026-06-12"):
     return Listing(
         article_id=article_id, complex_id=complex_id, size_label="84",
         size_sqm=84.5, price_manwon=price, building="101동", floor="10층",
-        direction="남향", registered_ymd="2026-06-12",
+        direction="남향", registered_ymd=ymd,
         article_url=f"https://new.land.naver.com/complexes/{complex_id}?articleNo={article_id}",
     )
 
@@ -79,3 +83,32 @@ def test_run_daily_continues_on_single_complex_failure(
     main()  # should NOT raise
 
     mock_send.assert_called_once()
+
+
+@patch("src.run_daily.send_message")
+@patch("src.run_daily.fetch_listings")
+@patch("src.run_daily.SheetsStore")
+@patch("src.run_daily.load_settings")
+def test_run_daily_new_listings_only_today(
+    mock_load_settings, MockStore, mock_fetch, mock_send
+):
+    mock_load_settings.return_value = _settings()
+    store = MagicMock()
+    MockStore.return_value = store
+    store.load_apartments.return_value = [
+        ApartmentConfig(name="성복", complex_id="8692", interested_sizes=(), active=True),
+    ]
+    store.load_latest.return_value = []  # empty -> diff would flag everything as new
+
+    mock_fetch.return_value = [
+        _make_listing("old1", "8692", 100000, ymd="2026-01-01"),
+        _make_listing("old2", "8692", 110000, ymd="2026-01-02"),
+        _make_listing("new1", "8692", 120000, ymd=TODAY),
+    ]
+
+    from src.run_daily import main
+    main()
+
+    sent_text = mock_send.call_args.kwargs.get("html") or mock_send.call_args.args[2]
+    # Only the one confirmed today counts as 신규, not all three.
+    assert "🆕 신규 매물 (1건)" in sent_text

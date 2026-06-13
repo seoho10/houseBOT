@@ -66,6 +66,15 @@ def _format_price(manwon: int) -> str:
     return f"{rest:,}"
 
 
+def confirmed_on(listings: list[Listing], ymd: str) -> list[Listing]:
+    """Listings whose Naver 확인 date (registered_ymd, 'YYYY-MM-DD') equals ymd.
+
+    Used to surface only *today's* new listings in alerts — the raw new-vs-
+    previous diff floods on the first run and whenever the snapshot is stale.
+    """
+    return [l for l in listings if l.registered_ymd == ymd]
+
+
 def summarize_by_size(listings: list[Listing]) -> dict[str, SizeSummary]:
     """Group listings by size and compute aggregate statistics."""
     by_size: dict[str, list[Listing]] = {}

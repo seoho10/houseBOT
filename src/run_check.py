@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 
-from src.analyzer import detect_changes
+from src.analyzer import confirmed_on, detect_changes
 from src.config import load_settings
 from src.naver_scraper import fetch_listings
 from src.sheets_store import SheetsStore
@@ -45,6 +45,7 @@ def main() -> None:
     now = datetime.now(KST)
     when_str = now.strftime("%Y-%m-%d %H:%M")
     time_str = now.strftime("%H:%M")
+    today_str = now.strftime("%Y-%m-%d")
 
     previous_all = store.load_latest()
     prev_by_complex: dict[str, list] = {}
@@ -65,8 +66,13 @@ def main() -> None:
         all_today.extend(today_listings)
         prev = prev_by_complex.get(apt.complex_id, [])
         events = detect_changes(prev, today_listings, threshold_pct=PRICE_CHANGE_THRESHOLD_PCT)
+        # 새로 등장(이전 스냅샷 대비)했고 + 확인일자가 오늘인 매물만 알림.
+        # diff 조건이 2시간마다 같은 매물 중복 알림을 막아준다.
         new_event_ids = {e.article_id for e in events if e.kind == "NEW_LISTING"}
-        new_listings = [l for l in today_listings if l.article_id in new_event_ids]
+        new_listings = [
+            l for l in confirmed_on(today_listings, today_str)
+            if l.article_id in new_event_ids
+        ]
         price_events = [e for e in events if e.kind == "PRICE_CHANGE"]
         if new_listings or price_events:
             changes_per_complex.append(ComplexChanges(

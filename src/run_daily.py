@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone, timedelta
 
-from src.analyzer import detect_changes, summarize_by_size, top_n_lowest
+from src.analyzer import confirmed_on, detect_changes, summarize_by_size, top_n_lowest
 from src.config import load_settings
 from src.naver_scraper import fetch_listings
 from src.sheets_store import SheetsStore
@@ -73,10 +73,9 @@ def main() -> None:
         all_today.extend(today_listings)
         all_events.extend(events)
 
-        new_listings = [
-            l for l in today_listings
-            if any(e.kind == "NEW_LISTING" and e.article_id == l.article_id for e in events)
-        ]
+        # 신규 매물 = 확인(등록)일자가 오늘인 매물만. 이전 스냅샷 대비 diff는
+        # 첫 실행/오래된 스냅샷에서 전부 신규로 잡혀 너무 많아지므로 사용하지 않는다.
+        new_listings = confirmed_on(today_listings, today_str)
         price_events = [e for e in events if e.kind == "PRICE_CHANGE"]
         reports.append(ComplexReport(
             apartment=apt,

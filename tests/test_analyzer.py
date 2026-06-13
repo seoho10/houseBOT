@@ -1,14 +1,28 @@
 from src.models import Listing
-from src.analyzer import detect_changes
+from src.analyzer import confirmed_on, detect_changes
 
 
-def L(article_id="a1", complex_id="8692", price=125000, size="84"):
+def L(article_id="a1", complex_id="8692", price=125000, size="84", ymd="2026-06-12"):
     return Listing(
         article_id=article_id, complex_id=complex_id, size_label=size,
         size_sqm=84.5, price_manwon=price, building="101동", floor="10층",
-        direction="남향", registered_ymd="2026-06-12",
+        direction="남향", registered_ymd=ymd,
         article_url=f"https://new.land.naver.com/complexes/{complex_id}?articleNo={article_id}",
     )
+
+
+def test_confirmed_on_keeps_only_matching_date():
+    listings = [
+        L(article_id="today1", ymd="2026-06-14"),
+        L(article_id="old1", ymd="2026-06-12"),
+        L(article_id="today2", ymd="2026-06-14"),
+    ]
+    out = confirmed_on(listings, "2026-06-14")
+    assert {l.article_id for l in out} == {"today1", "today2"}
+
+
+def test_confirmed_on_empty_when_none_match():
+    assert confirmed_on([L(ymd="2026-06-12")], "2026-06-14") == []
 
 
 def test_detect_new_listing():
