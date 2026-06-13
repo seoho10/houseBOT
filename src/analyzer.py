@@ -1,7 +1,7 @@
 """Pure analysis functions over Listing snapshots."""
 from __future__ import annotations
 
-from src.models import Event, Listing
+from src.models import Event, Listing, SizeSummary
 
 
 def detect_changes(
@@ -64,3 +64,26 @@ def _format_price(manwon: int) -> str:
     if eok:
         return f"{eok}억"
     return f"{rest:,}"
+
+
+def summarize_by_size(listings: list[Listing]) -> dict[str, SizeSummary]:
+    """Group listings by size and compute aggregate statistics."""
+    by_size: dict[str, list[Listing]] = {}
+    for l in listings:
+        by_size.setdefault(l.size_label, []).append(l)
+    result = {}
+    for size, items in by_size.items():
+        prices = [l.price_manwon for l in items]
+        result[size] = SizeSummary(
+            size_label=size,
+            count=len(items),
+            min_price=min(prices),
+            avg_price=sum(prices) // len(prices),
+            max_price=max(prices),
+        )
+    return result
+
+
+def top_n_lowest(listings: list[Listing], n: int) -> list[Listing]:
+    """Return n listings with lowest prices."""
+    return sorted(listings, key=lambda l: l.price_manwon)[:n]

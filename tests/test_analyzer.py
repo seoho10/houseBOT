@@ -57,3 +57,50 @@ def test_multiple_changes_in_one_call():
     events = detect_changes(prev, curr, threshold_pct=3.0)
     kinds = sorted(e.kind for e in events)
     assert kinds == ["LISTING_REMOVED", "NEW_LISTING", "PRICE_CHANGE"]
+
+
+from src.analyzer import summarize_by_size, top_n_lowest
+
+
+def test_summarize_by_size_groups_correctly():
+    listings = [
+        L(article_id="a1", price=125000, size="84"),
+        L(article_id="a2", price=130000, size="84"),
+        L(article_id="a3", price=132000, size="84"),
+        L(article_id="a4", price=180000, size="114"),
+        L(article_id="a5", price=190000, size="114"),
+    ]
+    by_size = summarize_by_size(listings)
+    assert set(by_size.keys()) == {"84", "114"}
+
+    s84 = by_size["84"]
+    assert s84.count == 3
+    assert s84.min_price == 125000
+    assert s84.max_price == 132000
+    assert s84.avg_price == 129000  # (125000+130000+132000)/3 = 129000
+
+    s114 = by_size["114"]
+    assert s114.count == 2
+    assert s114.min_price == 180000
+    assert s114.avg_price == 185000
+
+
+def test_summarize_empty():
+    assert summarize_by_size([]) == {}
+
+
+def test_top_n_lowest_returns_cheapest():
+    listings = [
+        L(article_id="a1", price=130000),
+        L(article_id="a2", price=125000),
+        L(article_id="a3", price=128000),
+        L(article_id="a4", price=132000),
+    ]
+    top3 = top_n_lowest(listings, n=3)
+    prices = [l.price_manwon for l in top3]
+    assert prices == [125000, 128000, 130000]
+
+
+def test_top_n_lowest_fewer_than_n():
+    listings = [L(article_id="a1", price=130000)]
+    assert len(top_n_lowest(listings, n=3)) == 1
