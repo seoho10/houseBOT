@@ -125,7 +125,7 @@ class NaverFetchError(RuntimeError):
 
 @retry(
     retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
-    wait=wait_exponential(multiplier=1, min=1, max=10),
+    wait=wait_exponential(multiplier=1, min=2, max=20),
     stop=stop_after_attempt(4),
     reraise=True,
 )
@@ -133,18 +133,32 @@ def _get_page(client: httpx.Client, complex_id: str, page: int) -> dict:
     resp = client.get(
         f"https://new.land.naver.com/api/articles/complex/{complex_id}",
         params={"realEstateType": "APT", "tradeType": "A1", "order": "rank", "page": page},
-        headers=_BASE_HEADERS,
-        timeout=15.0,
+        headers={**_BASE_HEADERS, "Referer": f"https://new.land.naver.com/complexes/{complex_id}"},
+        timeout=30.0,
     )
     resp.raise_for_status()
     return resp.json()
+
+
+def _warm_up(client: httpx.Client, complex_id: str) -> None:
+    """Hit the complex page once so the API call looks like a normal browser session."""
+    try:
+        client.get(
+            f"https://new.land.naver.com/complexes/{complex_id}",
+            headers=_BASE_HEADERS,
+            timeout=15.0,
+        )
+    except Exception:
+        pass  # best-effort; main API call still has its own retries
 
 
 def fetch_listings(complex_id: str) -> list[Listing]:
     """Fetch all sale listings for a complex, paginated, with retry."""
     all_listings: list[Listing] = []
     try:
-        with httpx.Client() as client:
+        with httpx.Client(http2=False, follow_redirects=True) as client:
+            _warm_up(client, complex_id)
+            time.sleep(_REQUEST_DELAY_SEC)
             for page in range(1, _MAX_PAGES + 1):
                 if page > 1:
                     time.sleep(_REQUEST_DELAY_SEC)
