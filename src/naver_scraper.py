@@ -2,6 +2,15 @@
 from __future__ import annotations
 
 import re
+import time
+
+import httpx
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from src.models import Listing
 
@@ -86,3 +95,51 @@ def _format_ymd(raw: str) -> str:
     if len(raw) == 8 and raw.isdigit():
         return f"{raw[:4]}-{raw[4:6]}-{raw[6:8]}"
     return ""
+
+
+_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+_REQUEST_DELAY_SEC = 1.0
+_MAX_PAGES = 20
+
+
+class NaverFetchError(RuntimeError):
+    pass
+
+
+@retry(
+    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
+    wait=wait_exponential(multiplier=1, min=1, max=10),
+    stop=stop_after_attempt(4),
+    reraise=True,
+)
+def _get_page(client: httpx.Client, complex_id: str, page: int) -> dict:
+    resp = client.get(
+        f"https://new.land.naver.com/api/articles/complex/{complex_id}",
+        params={"realEstateType": "APT", "tradeType": "A1", "order": "rank", "page": page},
+        headers={"User-Agent": _USER_AGENT, "Referer": "https://new.land.naver.com/"},
+        timeout=15.0,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def fetch_listings(complex_id: str) -> list[Listing]:
+    """Fetch all sale listings for a complex, paginated, with retry."""
+    all_listings: list[Listing] = []
+    try:
+        with httpx.Client() as client:
+            for page in range(1, _MAX_PAGES + 1):
+                if page > 1:
+                    time.sleep(_REQUEST_DELAY_SEC)
+                data = _get_page(client, complex_id, page)
+                all_listings.extend(parse_listings(data, complex_id=complex_id))
+                if not data.get("isMoreData"):
+                    break
+    except Exception as e:
+        raise RuntimeError(
+            f"Naver fetch failed for complex {complex_id} after retries: {e}"
+        ) from e
+    return all_listings
