@@ -1,16 +1,16 @@
-"""Naver real-estate scraping. Network code lives here; parsing helpers too."""
+"""Naver real-estate scraping. Network code lives here; parsing helpers too.
+
+The Naver article API (`/api/articles/complex/{id}`) rejects plain HTTP clients
+with 401 ("unauthorized user"): it requires BOTH the session cookies set during a
+real page load AND an `Authorization: Bearer <JWT>` header that the web app mints
+client-side. We drive a headless Chromium (Playwright) to obtain both, then issue
+the paginated fetches from inside the page context so cookies ride along for free
+and we attach the captured token. See `_browser_fetch_pages`.
+"""
 from __future__ import annotations
 
 import re
 import time
-
-import httpx
-from tenacity import (
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_exponential,
-)
 
 from src.models import Listing
 
@@ -99,75 +99,124 @@ def _format_ymd(raw: str) -> str:
 
 _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 )
-_BASE_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "application/json, text/plain, */*",
-    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Accept-Encoding": "gzip, deflate, br",
-    "Referer": "https://new.land.naver.com/",
-    "Origin": "https://new.land.naver.com",
-    "sec-ch-ua": '"Chromium";v="120", "Not-A.Brand";v="99"',
-    "sec-ch-ua-mobile": "?0",
-    "sec-ch-ua-platform": '"Windows"',
-    "Sec-Fetch-Dest": "empty",
-    "Sec-Fetch-Mode": "cors",
-    "Sec-Fetch-Site": "same-origin",
-}
-_REQUEST_DELAY_SEC = 1.5
+_REQUEST_DELAY_SEC = 1.0
 _MAX_PAGES = 20
+_NAV_TIMEOUT_MS = 45000
+_TOKEN_WAIT_TICKS = 40       # 40 * 250ms = 10s to capture the auth token
+_TOKEN_WAIT_MS = 250
+_BROWSER_ATTEMPTS = 3
+
+# Runs inside the page context: same-origin `fetch` carries Naver's session
+# cookies automatically; we attach the JWT the web app uses. Returns the parsed
+# JSON on success, or {__status, __body} so Python can raise on non-200.
+_FETCH_JS = """async ({cid, page, token}) => {
+  const url = `https://new.land.naver.com/api/articles/complex/${cid}`
+    + `?realEstateType=APT&tradeType=A1&order=rank&page=${page}`;
+  const r = await fetch(url, {headers: {'Accept': 'application/json', 'Authorization': token}});
+  if (!r.ok) return {__status: r.status, __body: (await r.text()).slice(0, 300)};
+  return await r.json();
+}"""
 
 
-class NaverFetchError(RuntimeError):
-    pass
+def _paginate(get_one_page) -> list[dict]:
+    """Walk pages via `get_one_page(page_num) -> dict` until isMoreData is falsey.
+
+    Pulled out so the stop logic is unit-testable without a live browser.
+    """
+    pages: list[dict] = []
+    for page_num in range(1, _MAX_PAGES + 1):
+        data = get_one_page(page_num)
+        pages.append(data)
+        if not data.get("isMoreData"):
+            break
+    return pages
 
 
-@retry(
-    retry=retry_if_exception_type((httpx.HTTPStatusError, httpx.RequestError)),
-    wait=wait_exponential(multiplier=1, min=2, max=20),
-    stop=stop_after_attempt(4),
-    reraise=True,
-)
-def _get_page(client: httpx.Client, complex_id: str, page: int) -> dict:
-    resp = client.get(
-        f"https://new.land.naver.com/api/articles/complex/{complex_id}",
-        params={"realEstateType": "APT", "tradeType": "A1", "order": "rank", "page": page},
-        headers={**_BASE_HEADERS, "Referer": f"https://new.land.naver.com/complexes/{complex_id}"},
-        timeout=30.0,
-    )
-    resp.raise_for_status()
-    return resp.json()
+def _browser_fetch_once(complex_id: str) -> list[dict]:
+    """One headless-browser session: load the complex page, capture the auth
+    token from the app's own article request, then fetch every sale page."""
+    from playwright.sync_api import sync_playwright
 
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            ctx = browser.new_context(
+                user_agent=_USER_AGENT,
+                locale="ko-KR",
+                viewport={"width": 1280, "height": 900},
+            )
+            page = ctx.new_page()
 
-def _warm_up(client: httpx.Client, complex_id: str) -> None:
-    """Hit the complex page once so the API call looks like a normal browser session."""
-    try:
-        client.get(
-            f"https://new.land.naver.com/complexes/{complex_id}",
-            headers=_BASE_HEADERS,
-            timeout=15.0,
-        )
-    except Exception:
-        pass  # best-effort; main API call still has its own retries
+            token: dict[str, str] = {}
 
+            def _on_request(req) -> None:
+                if "/api/articles/complex/" in req.url and "auth" not in token:
+                    auth = req.all_headers().get("authorization")
+                    if auth:
+                        token["auth"] = auth
 
-def fetch_listings(complex_id: str) -> list[Listing]:
-    """Fetch all sale listings for a complex, paginated, with retry."""
-    all_listings: list[Listing] = []
-    try:
-        with httpx.Client(http2=False, follow_redirects=True) as client:
-            _warm_up(client, complex_id)
-            time.sleep(_REQUEST_DELAY_SEC)
-            for page in range(1, _MAX_PAGES + 1):
-                if page > 1:
-                    time.sleep(_REQUEST_DELAY_SEC)
-                data = _get_page(client, complex_id, page)
-                all_listings.extend(parse_listings(data, complex_id=complex_id))
-                if not data.get("isMoreData"):
+            page.on("request", _on_request)
+            page.goto(
+                f"https://new.land.naver.com/complexes/{complex_id}",
+                wait_until="networkidle",
+                timeout=_NAV_TIMEOUT_MS,
+            )
+
+            for _ in range(_TOKEN_WAIT_TICKS):
+                if "auth" in token:
                     break
+                page.wait_for_timeout(_TOKEN_WAIT_MS)
+            if "auth" not in token:
+                raise RuntimeError("could not obtain Naver auth token from page session")
+
+            def _get_one_page(page_num: int) -> dict:
+                if page_num > 1:
+                    page.wait_for_timeout(int(_REQUEST_DELAY_SEC * 1000))
+                data = page.evaluate(
+                    _FETCH_JS, {"cid": complex_id, "page": page_num, "token": token["auth"]}
+                )
+                status = data.get("__status")
+                if status is not None:
+                    raise RuntimeError(
+                        f"article API returned {status}: {data.get('__body', '')}"
+                    )
+                return data
+
+            return _paginate(_get_one_page)
+        finally:
+            browser.close()
+
+
+def _browser_fetch_pages(complex_id: str) -> list[dict]:
+    """`_browser_fetch_once` with retries. A fresh session re-mints the token,
+    so retrying also recovers from token/401 hiccups, not just network blips."""
+    last_err: Exception | None = None
+    for attempt in range(_BROWSER_ATTEMPTS):
+        try:
+            return _browser_fetch_once(complex_id)
+        except Exception as e:  # noqa: BLE001 - surfaced via fetch_listings wrapper
+            last_err = e
+            if attempt < _BROWSER_ATTEMPTS - 1:
+                time.sleep(2 * (attempt + 1))
+    assert last_err is not None
+    raise last_err
+
+
+def fetch_listings(complex_id: str, *, page_fetcher=None) -> list[Listing]:
+    """Fetch all sale (A1) listings for a complex, paginated.
+
+    `page_fetcher(complex_id) -> list[dict]` is an injection seam for tests;
+    it defaults to the Playwright browser fetcher.
+    """
+    fetch = page_fetcher or _browser_fetch_pages
+    try:
+        raw_pages = fetch(complex_id)
     except Exception as e:
-        raise RuntimeError(
-            f"Naver fetch failed for complex {complex_id} after retries: {e}"
-        ) from e
+        raise RuntimeError(f"Naver fetch failed for complex {complex_id}: {e}") from e
+
+    all_listings: list[Listing] = []
+    for data in raw_pages:
+        all_listings.extend(parse_listings(data, complex_id=complex_id))
     return all_listings

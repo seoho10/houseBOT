@@ -1,25 +1,19 @@
 import json
 import os
-import httpx
+
 import pytest
-import respx
 
-from src.naver_scraper import fetch_listings
+from src.naver_scraper import _MAX_PAGES, _paginate, fetch_listings
 
 
-@respx.mock
 def test_fetch_listings_single_page(fixture_dir):
     with open(os.path.join(fixture_dir, "naver_complex_response.json"), encoding="utf-8") as f:
         resp = json.load(f)
 
-    url = "https://new.land.naver.com/api/articles/complex/8692"
-    respx.get(url).mock(return_value=httpx.Response(200, json=resp))
-
-    listings = fetch_listings("8692")
+    listings = fetch_listings("8692", page_fetcher=lambda cid: [resp])
     assert len(listings) == 2
 
 
-@respx.mock
 def test_fetch_listings_paginates(fixture_dir):
     page1 = {
         "isMoreData": True,
@@ -37,33 +31,40 @@ def test_fetch_listings_paginates(fixture_dir):
              "buildingName": "102동", "floorInfo": "8/15"}
         ],
     }
-    route = respx.get("https://new.land.naver.com/api/articles/complex/8692")
-    route.side_effect = [httpx.Response(200, json=page1), httpx.Response(200, json=page2)]
 
-    listings = fetch_listings("8692")
+    listings = fetch_listings("8692", page_fetcher=lambda cid: [page1, page2])
     assert {l.article_id for l in listings} == {"p1a", "p2a"}
 
 
-@respx.mock
-def test_fetch_listings_retries_on_5xx(fixture_dir):
-    with open(os.path.join(fixture_dir, "naver_complex_response.json"), encoding="utf-8") as f:
-        ok_resp = json.load(f)
-
-    route = respx.get("https://new.land.naver.com/api/articles/complex/8692")
-    route.side_effect = [
-        httpx.Response(503),
-        httpx.Response(503),
-        httpx.Response(200, json=ok_resp),
-    ]
-
-    listings = fetch_listings("8692")
-    assert len(listings) == 2
-
-
-@respx.mock
-def test_fetch_listings_raises_after_max_retries():
-    route = respx.get("https://new.land.naver.com/api/articles/complex/8692")
-    route.side_effect = [httpx.Response(503)] * 10
+def test_fetch_listings_wraps_fetch_errors():
+    def boom(cid):
+        raise RuntimeError("could not obtain Naver auth token from page session")
 
     with pytest.raises(RuntimeError, match="failed"):
-        fetch_listings("8692")
+        fetch_listings("8692", page_fetcher=boom)
+
+
+def test_paginate_stops_on_is_more_data_false():
+    pages = [
+        {"isMoreData": True, "articleList": []},
+        {"isMoreData": True, "articleList": []},
+        {"isMoreData": False, "articleList": []},
+        {"isMoreData": True, "articleList": []},  # must never be reached
+    ]
+    seen = []
+
+    def get_one(n):
+        seen.append(n)
+        return pages[n - 1]
+
+    out = _paginate(get_one)
+    assert len(out) == 3
+    assert seen == [1, 2, 3]
+
+
+def test_paginate_honors_max_pages():
+    def get_one(n):
+        return {"isMoreData": True, "articleList": []}  # never stops on its own
+
+    out = _paginate(get_one)
+    assert len(out) == _MAX_PAGES
