@@ -1,0 +1,42 @@
+{
+  "isMoreData": false,
+  "articleList": [
+    {
+      "articleNo": "2425167890",
+      "articleName": "성복역현대홈타운",
+      "tradeTypeCode": "A1",
+      "tradeTypeName": "매매",
+      "dealOrWarrantPrc": "12억 5,000",
+      "area1": 114.0,
+      "area2": 84.92,
+      "direction": "남향",
+      "articleConfirmYmd": "20260612",
+      "buildingName": "101동",
+      "floorInfo": "10/15"
+    },
+    {
+      "articleNo": "2425167891",
+      "articleName": "성복역현대홈타운",
+      "tradeTypeCode": "A1",
+      "dealOrWarrantPrc": "18억",
+      "area1": 145.0,
+      "area2": 114.7,
+      "direction": "동향",
+      "articleConfirmYmd": "20260610",
+      "buildingName": "105동",
+      "floorInfo": "5/20"
+    },
+    {
+      "articleNo": "2425167892",
+      "articleName": "성복역현대홈타운",
+      "tradeTypeCode": "B1",
+      "dealOrWarrantPrc": "8억",
+      "area1": 84.0,
+      "area2": 59.0,
+      "direction": "남향",
+      "articleConfirmYmd": "20260605",
+      "buildingName": "102동",
+      "floorInfo": "8/15"
+    }
+  ]
+}
