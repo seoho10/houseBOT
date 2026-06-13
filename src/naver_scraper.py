@@ -101,7 +101,21 @@ _USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
-_REQUEST_DELAY_SEC = 1.0
+_BASE_HEADERS = {
+    "User-Agent": _USER_AGENT,
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Referer": "https://new.land.naver.com/",
+    "Origin": "https://new.land.naver.com",
+    "sec-ch-ua": '"Chromium";v="120", "Not-A.Brand";v="99"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
+}
+_REQUEST_DELAY_SEC = 1.5
 _MAX_PAGES = 20
 
 
@@ -119,7 +133,7 @@ def _get_page(client: httpx.Client, complex_id: str, page: int) -> dict:
     resp = client.get(
         f"https://new.land.naver.com/api/articles/complex/{complex_id}",
         params={"realEstateType": "APT", "tradeType": "A1", "order": "rank", "page": page},
-        headers={"User-Agent": _USER_AGENT, "Referer": "https://new.land.naver.com/"},
+        headers=_BASE_HEADERS,
         timeout=15.0,
     )
     resp.raise_for_status()

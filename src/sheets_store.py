@@ -48,6 +48,15 @@ class SheetsStore:
         existing = {ws.title for ws in self._book.worksheets()}
         for tab in REQUIRED_TABS:
             if tab in existing:
+                ws = self._book.worksheet(tab)
+                values = ws.get_all_values()
+                is_empty = not values or all(
+                    not any(cell.strip() for cell in row) for row in values
+                )
+                if is_empty:
+                    ws.update("A1", [_HEADERS[tab]])
+                    if tab == "settings":
+                        ws.update("A2", _DEFAULT_SETTINGS_ROWS)
                 continue
             ws = self._book.add_worksheet(title=tab, rows=200, cols=20)
             ws.update("A1", [_HEADERS[tab]])
