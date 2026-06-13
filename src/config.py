@@ -35,6 +35,6 @@ def load_settings() -> Settings:
         telegram_bot_token=_require_env("TELEGRAM_BOT_TOKEN"),
         telegram_chat_id=_require_env("TELEGRAM_CHAT_ID"),
         sheets_id=_require_env("GOOGLE_SHEETS_ID"),
-        google_sa_info=json.loads(_require_env("GOOGLE_SERVICE_ACCOUNT_JSON")),
-        dry_run=os.environ.get("DRY_RUN", "false").lower() == "true",
+        google_sa_info=json.loads(_require_env("GOOGLE_SERVICE_ACCOUNT_JSON").strip()),
+        dry_run=os.environ.get("DRY_RUN", "false").strip().lower() == "true",
     )
