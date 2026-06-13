@@ -128,17 +128,27 @@ class SheetsStore:
         ws.append_row([when, mode, result, complex_count, listing_count, message])
 
     def last_successful_run_for_mode(self, mode: str) -> str | None:
-        """Return the 'when' string of the most recent SUCCESS/PARTIAL run for `mode`,
-        or None if no such run exists. Used by multi-host dedup."""
+        """Return the 'when' string of the most recent fully-successful run for `mode`,
+        or None. PARTIAL or all-failed runs are treated as not-yet-run so other
+        hosts will retry. Used by multi-host dedup."""
         ws = self._book.worksheet("run_log")
         rows = ws.get_all_values()
         if len(rows) <= 1:
             return None
         for row in reversed(rows[1:]):
             row = (row + [""] * 6)[:6]
-            when, log_mode, result, _, _, _ = row
-            if log_mode == mode and result in ("SUCCESS", "PARTIAL"):
+            when, log_mode, result, _, listing_count_str, _ = row
+            if log_mode != mode:
+                continue
+            if result == "SUCCESS":
                 return when
+            # PARTIAL counts as success only when at least some listings were captured
+            if result == "PARTIAL":
+                try:
+                    if int(listing_count_str) > 0:
+                        return when
+                except (ValueError, TypeError):
+                    pass
         return None
 
     def load_apartments(self) -> list["ApartmentConfig"]:
