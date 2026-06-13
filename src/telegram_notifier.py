@@ -127,3 +127,36 @@ def format_light_check(time: str, complex_changes: list[ComplexChanges]) -> str:
 def format_error(message: str) -> str:
     safe = message.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
     return f"🚨 <b>houseBOT 에러</b>\n\n{safe}"
+
+
+import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+
+@retry(
+    retry=retry_if_exception_type(httpx.HTTPError),
+    wait=wait_exponential(multiplier=1, min=1, max=5),
+    stop=stop_after_attempt(3),
+    reraise=True,
+)
+def _post_telegram(token: str, chat_id: str, html: str) -> None:
+    resp = httpx.post(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data={
+            "chat_id": chat_id,
+            "text": html,
+            "parse_mode": "HTML",
+            "disable_web_page_preview": "true",
+        },
+        timeout=15.0,
+    )
+    if resp.status_code != 200 or not resp.json().get("ok"):
+        raise RuntimeError(f"Telegram send failed: {resp.status_code} {resp.text}")
+
+
+def send_message(token: str, chat_id: str, html: str, dry_run: bool = False) -> None:
+    if dry_run:
+        print("[DRY_RUN] Telegram message would be:")
+        print(html)
+        return
+    _post_telegram(token, chat_id, html)
