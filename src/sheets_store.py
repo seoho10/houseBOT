@@ -90,6 +90,34 @@ class SheetsStore:
             ))
         return result
 
+    def append_history(
+        self, date: str, complex_id: str, summaries: dict[str, "SizeSummary"]
+    ) -> None:
+        ws = self._book.worksheet("history")
+        rows = [
+            [date, complex_id, s.size_label, s.count, s.min_price, s.avg_price, s.max_price]
+            for s in summaries.values()
+        ]
+        if rows:
+            ws.append_rows(rows)
+
+    def append_events(self, events: list["Event"], when: str) -> None:
+        if not events:
+            return
+        ws = self._book.worksheet("events")
+        rows = [
+            [when, e.kind, e.complex_id, e.article_id, e.detail, e.article_url]
+            for e in events
+        ]
+        ws.append_rows(rows)
+
+    def append_run_log(
+        self, when: str, mode: str, result: str,
+        complex_count: int, listing_count: int, message: str = ""
+    ) -> None:
+        ws = self._book.worksheet("run_log")
+        ws.append_row([when, mode, result, complex_count, listing_count, message])
+
     def load_apartments(self) -> list["ApartmentConfig"]:
         from src.config import ApartmentConfig  # local import to avoid circularity
         ws = self._book.worksheet("settings")

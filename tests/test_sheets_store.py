@@ -145,3 +145,60 @@ def test_load_latest_empty_returns_empty():
     )
     store = SheetsStore("abc", {"client_email": "x"}, client=fake_client)
     assert store.load_latest() == []
+
+
+from src.models import Event, SizeSummary
+
+
+def test_append_history_writes_one_row_per_size():
+    fake_client, _, ws = _stub_book_with_tab(
+        "history",
+        [["날짜", "단지ID", "평형", "매물수", "최저가", "평균가", "최고가"]],
+    )
+    store = SheetsStore("abc", {"client_email": "x"}, client=fake_client)
+
+    summaries = {
+        "84": SizeSummary("84", count=3, min_price=125000, avg_price=129000, max_price=132000),
+        "114": SizeSummary("114", count=2, min_price=180000, avg_price=185000, max_price=190000),
+    }
+    store.append_history(date="2026-06-13", complex_id="8692", summaries=summaries)
+
+    ws.append_rows.assert_called_once()
+    rows_written = ws.append_rows.call_args.args[0]
+    assert len(rows_written) == 2
+
+
+def test_append_events_writes_each_event():
+    fake_client, _, ws = _stub_book_with_tab(
+        "events",
+        [["시각", "종류", "단지ID", "매물ID", "상세", "매물URL"]],
+    )
+    store = SheetsStore("abc", {"client_email": "x"}, client=fake_client)
+
+    events = [
+        Event(kind="NEW_LISTING", complex_id="8692", article_id="a1",
+              detail="84㎡, 12억", article_url="https://x/a1"),
+        Event(kind="PRICE_CHANGE", complex_id="8692", article_id="a2",
+              detail="84㎡: 130000 → 125000", article_url="https://x/a2"),
+    ]
+    store.append_events(events, when="2026-06-13 10:30")
+
+    ws.append_rows.assert_called_once()
+    rows = ws.append_rows.call_args.args[0]
+    assert len(rows) == 2
+    assert rows[0][1] == "NEW_LISTING"
+
+
+def test_append_run_log_writes_one_row():
+    fake_client, _, ws = _stub_book_with_tab(
+        "run_log",
+        [["시각", "모드", "결과", "단지수", "매물수", "메시지"]],
+    )
+    store = SheetsStore("abc", {"client_email": "x"}, client=fake_client)
+
+    store.append_run_log(when="2026-06-13 08:30", mode="daily",
+                         result="SUCCESS", complex_count=2, listing_count=17, message="")
+
+    ws.append_row.assert_called_once()
+    row = ws.append_row.call_args.args[0]
+    assert row[1] == "daily" and row[2] == "SUCCESS"
