@@ -111,6 +111,25 @@ def test_format_check_with_changes_omits_no_change_flag():
     assert "-3.6%" in text
 
 
+def test_size_section_has_expandable_listing_list():
+    """평형별 시세 각 줄 밑에, 그 평형의 전체 매물이 접이식(expandable) 블록으로 들어간다."""
+    text = format_check("12:30", [_report()], has_changes=False)
+    # 텔레그램 접이식 인용블록
+    assert "<blockquote expandable>" in text
+    assert "</blockquote>" in text
+    # 84㎡ 매물 두 건(a1, a2)이 모두 블록 안에 링크로 들어가야 한다
+    assert "articleNo=a1" in text
+    assert "articleNo=a2" in text
+
+
+def test_expandable_block_sits_under_its_size_line():
+    """접이식 블록은 해당 평형 시세 줄 바로 뒤에 위치한다."""
+    text = format_daily_summary("2026-06-14", [_report()], "https://x")
+    size_idx = text.index("84㎡")
+    block_idx = text.index("<blockquote expandable>")
+    assert size_idx < block_idx
+
+
 def test_format_error_renders_message():
     text = format_error("네이버 API 구조 변경 감지\n단지: 성복 (8692)\n원인: 'dealPrice' 누락")
     assert "🚨" in text

@@ -36,9 +36,9 @@ def _link(url: str, text: str) -> str:
     return f'<a href="{url}">{safe}</a>'
 
 
-def _format_listing_line(l: Listing) -> str:
+def _format_listing_line(l: Listing, with_size: bool = True) -> str:
     parts = [
-        f"{l.size_label}㎡",
+        f"{l.size_label}㎡" if with_size else "",
         _format_price(l.price_manwon),
         f"{l.building} {l.floor}".strip(),
         l.direction,
@@ -59,11 +59,18 @@ def _render_complex_block(r: ComplexReport, count_line: str) -> list[str]:
     ]
     if r.size_summaries:
         lines.append("💰 평형별 시세")
+        by_size: dict[str, list[Listing]] = {}
+        for l in r.listings_today:
+            by_size.setdefault(l.size_label, []).append(l)
         for size, s in sorted(r.size_summaries.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 999):
             lines.append(
                 f" • {size}㎡  최저 {_format_price(s.min_price)} / "
                 f"평균 {_format_price(s.avg_price)} ({s.count}건)"
             )
+            items = sorted(by_size.get(size, []), key=lambda l: l.price_manwon)
+            if items:
+                inner = "\n".join(_format_listing_line(l, with_size=False) for l in items)
+                lines.append(f"<blockquote expandable>{inner}</blockquote>")
         lines.append("")
     if r.new_listings:
         lines.append(f"🆕 신규 매물 ({len(r.new_listings)}건)")
