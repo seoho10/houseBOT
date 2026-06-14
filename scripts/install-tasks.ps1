@@ -33,7 +33,8 @@ function Register-houseBOTTask {
         -AllowStartIfOnBatteries `
         -DontStopIfGoingOnBatteries `
         -StartWhenAvailable `
-        -ExecutionTimeLimit (New-TimeSpan -Minutes 10)
+        -WakeToRun `
+        -ExecutionTimeLimit (New-TimeSpan -Minutes 20)
 
     # If task exists, replace it
     if (Get-ScheduledTask -TaskName $Name -ErrorAction SilentlyContinue) {
@@ -63,6 +64,13 @@ foreach ($hour in 9,11,13,15,17,19,21) {
     $checkTriggers += New-ScheduledTaskTrigger -Daily -At $timeStr
 }
 Register-houseBOTTask -Name "houseBOT-Check" -Script $CheckScript -Triggers $checkTriggers
+
+# WakeToRun only works if the active power plan allows wake timers. Enable on AC + battery.
+$guid = (powercfg /getactivescheme) -replace '.*GUID: ([a-f0-9-]+).*', '$1'
+powercfg /setacvalueindex $guid SUB_SLEEP RTCWAKE 1 2>$null
+powercfg /setdcvalueindex $guid SUB_SLEEP RTCWAKE 1 2>$null
+powercfg /setactive $guid 2>$null
+Write-Host "  Wake timers enabled (so tasks can wake the PC from sleep)"
 
 Write-Host ""
 Write-Host "Done. View tasks: Get-ScheduledTask -TaskName 'houseBOT-*'"
