@@ -62,32 +62,52 @@ def test_format_daily_summary_renders_new_and_price_changes():
     assert "-3.8%" in text
 
 
-from src.telegram_notifier import format_light_check, format_error, ComplexChanges
+from src.telegram_notifier import format_check, format_error
 
 
-def test_format_light_check_skipped_when_no_changes():
-    """Caller should not call format_light_check if no changes; assert it raises."""
-    import pytest
-    with pytest.raises(ValueError, match="no changes"):
-        format_light_check(time="12:30", complex_changes=[])
+def _report(apt_name="성복", new_listings=None, price_changes=None):
+    apt = ApartmentConfig(name=apt_name, complex_id="8692", interested_sizes=(), active=True)
+    return ComplexReport(
+        apartment=apt,
+        listings_today=[_listing("a1"), _listing("a2", price=130000)],
+        count_today=2,
+        count_yesterday=2,
+        size_summaries={"84": SizeSummary("84", 2, 125000, 127500, 130000)},
+        new_listings=new_listings or [],
+        price_changes=price_changes or [],
+        lowest_by_size=[_listing("a1")],
+    )
 
 
-def test_format_light_check_renders_new_and_price():
-    apt = ApartmentConfig(name="성복", complex_id="8692", interested_sizes=(), active=True)
+def test_format_check_no_change_shows_default_block_and_flag():
+    """No changes → still shows the full default block (매물 수·시세·최저가),
+    with only '변동 없음' added at the very top under the time-basis header."""
+    text = format_check(time="12:30", reports=[_report()], has_changes=False)
+    assert "12:30 기준" in text
+    # 변동 없음은 맨 위(헤더 바로 아래)에만 들어간다.
+    assert text.index("변동 없음") < text.index("📍")
+    # 디폴트 블록은 항상 포함
+    assert "매물 수" in text
+    assert "평형별 시세" in text
+    assert "평형별 최저가" in text
+
+
+def test_format_check_with_changes_omits_no_change_flag():
     new_l = _listing("a3", price=130000)
     price_event = Event(
         kind="PRICE_CHANGE", complex_id="8692", article_id="a1",
         detail="145㎡: 195000 → 188000 (-3.6%)",
         article_url="https://new.land.naver.com/complexes/8692?articleNo=a1",
     )
-    changes = ComplexChanges(apartment=apt, new_listings=[new_l], price_changes=[price_event])
-    text = format_light_check("12:30", [changes])
+    report = _report(new_listings=[new_l], price_changes=[price_event])
+    text = format_check("12:30", [report], has_changes=True)
 
     assert "🔔" in text
-    assert "12:30" in text
+    assert "12:30 기준" in text
+    assert "변동 없음" not in text
     assert "성복" in text
-    assert "신규 매물 1건" in text
-    assert "가격 변동 1건" in text
+    assert "신규 매물 (1건)" in text
+    assert "가격 변동 (1건)" in text
     assert "-3.6%" in text
 
 

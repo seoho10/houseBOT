@@ -47,45 +47,52 @@ def _format_listing_line(l: Listing) -> str:
     return _link(l.article_url, inner)
 
 
+def _render_complex_block(r: ComplexReport, count_line: str) -> list[str]:
+    """Shared per-complex section: 매물 수, 평형별 시세, 신규 매물, 가격 변동, 평형별 최저가."""
+    complex_url = f"https://new.land.naver.com/complexes/{r.apartment.complex_id}"
+    lines = [
+        "━━━━━━━━━━━━━━━━━━",
+        f"📍 {_link(complex_url, r.apartment.name)}",
+        "━━━━━━━━━━━━━━━━━━",
+        count_line,
+        "",
+    ]
+    if r.size_summaries:
+        lines.append("💰 평형별 시세")
+        for size, s in sorted(r.size_summaries.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 999):
+            lines.append(
+                f" • {size}㎡  최저 {_format_price(s.min_price)} / "
+                f"평균 {_format_price(s.avg_price)} ({s.count}건)"
+            )
+        lines.append("")
+    if r.new_listings:
+        lines.append(f"🆕 신규 매물 ({len(r.new_listings)}건)")
+        for l in r.new_listings:
+            lines.append(f" • {_format_listing_line(l)}")
+        lines.append("")
+    if r.price_changes:
+        lines.append(f"📉 가격 변동 ({len(r.price_changes)}건)")
+        for e in r.price_changes:
+            lines.append(f" • {_link(e.article_url, e.detail)}")
+        lines.append("")
+    if r.lowest_by_size:
+        lines.append("🏷 평형별 최저가")
+        for l in r.lowest_by_size:
+            lines.append(f" • {_format_listing_line(l)}")
+        lines.append("")
+    return lines
+
+
 def format_daily_summary(
     date: str, reports: list[ComplexReport], sheets_url: str
 ) -> str:
-    lines: list[str] = []
-    lines.append(f"🏠 <b>houseBOT 일일 요약</b> ({date})")
-    lines.append("")
+    lines: list[str] = [f"🏠 <b>houseBOT 일일 요약</b> ({date})", ""]
 
     for r in reports:
-        complex_url = f"https://new.land.naver.com/complexes/{r.apartment.complex_id}"
-        lines.append("━━━━━━━━━━━━━━━━━━")
-        lines.append(f"📍 {_link(complex_url, r.apartment.name)}")
-        lines.append("━━━━━━━━━━━━━━━━━━")
         diff = r.count_today - r.count_yesterday
         diff_str = (f"+{diff}" if diff > 0 else f"{diff}") if diff != 0 else "변동 없음"
-        lines.append(f"📊 매물 수: {r.count_today}건 (어제 {r.count_yesterday}건, {diff_str})")
-        lines.append("")
-        if r.size_summaries:
-            lines.append("💰 평형별 시세")
-            for size, s in sorted(r.size_summaries.items(), key=lambda kv: int(kv[0]) if kv[0].isdigit() else 999):
-                lines.append(
-                    f" • {size}㎡  최저 {_format_price(s.min_price)} / "
-                    f"평균 {_format_price(s.avg_price)} ({s.count}건)"
-                )
-            lines.append("")
-        if r.new_listings:
-            lines.append(f"🆕 신규 매물 ({len(r.new_listings)}건)")
-            for l in r.new_listings:
-                lines.append(f" • {_format_listing_line(l)}")
-            lines.append("")
-        if r.price_changes:
-            lines.append(f"📉 가격 변동 ({len(r.price_changes)}건)")
-            for e in r.price_changes:
-                lines.append(f" • {_link(e.article_url, e.detail)}")
-            lines.append("")
-        if r.lowest_by_size:
-            lines.append("🏷 평형별 최저가")
-            for l in r.lowest_by_size:
-                lines.append(f" • {_format_listing_line(l)}")
-            lines.append("")
+        count_line = f"📊 매물 수: {r.count_today}건 (어제 {r.count_yesterday}건, {diff_str})"
+        lines.extend(_render_complex_block(r, count_line))
 
     lines.append("━━━━━━━━━━━━━━━━━━")
     lines.append(f"📊 {_link(sheets_url, '전체 추이 보기 → Google Sheets')}")
@@ -93,34 +100,16 @@ def format_daily_summary(
     return "\n".join(lines)
 
 
-@dataclass(frozen=True)
-class ComplexChanges:
-    apartment: ApartmentConfig
-    new_listings: list[Listing]
-    price_changes: list[Event]
-
-
-def format_light_check(time: str, complex_changes: list[ComplexChanges]) -> str:
-    if not complex_changes or all(
-        not c.new_listings and not c.price_changes for c in complex_changes
-    ):
-        raise ValueError("format_light_check called with no changes — caller should skip send")
-
-    lines = [f"🔔 <b>변동 알림</b> ({time})", ""]
-    for c in complex_changes:
-        if not c.new_listings and not c.price_changes:
-            continue
-        complex_url = f"https://new.land.naver.com/complexes/{c.apartment.complex_id}"
-        lines.append(f"📍 {_link(complex_url, c.apartment.name)}")
-        if c.new_listings:
-            lines.append(f"🆕 신규 매물 {len(c.new_listings)}건")
-            for l in c.new_listings:
-                lines.append(f" • {_format_listing_line(l)}")
-        if c.price_changes:
-            lines.append(f"📉 가격 변동 {len(c.price_changes)}건")
-            for e in c.price_changes:
-                lines.append(f" • {_link(e.article_url, e.detail)}")
-        lines.append("")
+def format_check(time: str, reports: list[ComplexReport], has_changes: bool) -> str:
+    """2시간 변동 체크 메시지. 매물 수·평형별 시세·신규 매물·평형별 최저가를
+    항상 디폴트로 보여주고, 변동이 없으면 맨 위에 '변동 없음'만 추가한다."""
+    lines = [f"🔔 <b>houseBOT 변동 체크</b> ({time} 기준)"]
+    if not has_changes:
+        lines.append("변동 없음 ✅")
+    lines.append("")
+    for r in reports:
+        count_line = f"📊 매물 수: {r.count_today}건"
+        lines.extend(_render_complex_block(r, count_line))
     return "\n".join(lines).rstrip()
 
 

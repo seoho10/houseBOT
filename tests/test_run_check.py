@@ -27,7 +27,7 @@ def _make_listing(article_id, complex_id, price, ymd="2026-06-12"):
 @patch("src.run_check.fetch_listings")
 @patch("src.run_check.SheetsStore")
 @patch("src.run_check.load_settings")
-def test_run_check_silent_when_no_changes(
+def test_run_check_sends_no_change_message(
     mock_load_settings, MockStore, mock_fetch, mock_send
 ):
     mock_load_settings.return_value = _settings()
@@ -42,7 +42,9 @@ def test_run_check_silent_when_no_changes(
     from src.run_check import main
     main()
 
-    mock_send.assert_not_called()
+    # 변동이 없어도 "변동 없음" 메시지를 항상 보낸다.
+    mock_send.assert_called_once()
+    assert "변동 없음" in mock_send.call_args.kwargs["html"]
     store.save_latest.assert_not_called()  # no change → no overwrite needed
 
 
@@ -95,5 +97,7 @@ def test_run_check_ignores_new_listing_not_confirmed_today(
     from src.run_check import main
     main()
 
-    # newly-appeared but not confirmed today -> not a 신규 alert, no price change -> silent
-    mock_send.assert_not_called()
+    # newly-appeared but not confirmed today -> not a 신규 alert, no price change
+    # -> still sends a "변동 없음" message (2시간마다 항상 발송)
+    mock_send.assert_called_once()
+    assert "변동 없음" in mock_send.call_args.kwargs["html"]
